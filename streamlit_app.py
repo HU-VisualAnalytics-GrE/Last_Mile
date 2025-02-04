@@ -13,8 +13,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from streamlit_plotly_events import plotly_events
 from sklearn.decomposition import PCA
-from tensorflow.keras.models import load_model
-from tensorflow.keras.losses import mse
+import tensorflow as tf
+from tensorflow import keras
 
 # -------------- Constants --------------
 CLASS_MAPPING = {
@@ -228,7 +228,8 @@ def train_or_load_model(path, x_train=None, y_train=None):
                 model = pickle.load(f)
                 return model
         elif path.endswith(".h5"):
-            model = load_model(path, custom_objects={'mse': mse})
+            model = tf.keras.models.load_model(path, custom_objects={'mse': keras.losses.mse})
+            print(model)
             return model
     except Exception:
         # Load and prepare data
@@ -261,12 +262,11 @@ if __name__ == "__main__":
     with model_1:
 
         st.subheader(option_model_selection_1)
-
         if option_model_selection_1 == "Unoptimized Model":
             X_train, X_test, y_train, y_test = prepare_data(df_test, df_target)
             rf_model = train_or_load_model("models/RandomForestClassifierUnoptimized.pkl", X_train, y_train)
         else:
-            encoder = train_or_load_model("models/autoencoder_model_2.h5")
+            encoder = train_or_load_model("models/autoencoder_model.h5")
             encoded_features = encoder.predict(df_test)
             df_encoded_features = pd.DataFrame(encoded_features)
             X_train, X_test, y_train, y_test = prepare_data(df_encoded_features, df_target)
@@ -286,21 +286,18 @@ if __name__ == "__main__":
     with model_2:
 
         st.subheader(option_model_selection_2)
-
         if option_model_selection_2 == "Optimized Model":
-            print("Hi right")
-            encoder = train_or_load_model("models/autoencoder_model_2.h5")
+            encoder = train_or_load_model("models/autoencoder_model.h5")
             encoded_features = encoder.predict(df_test)
             df_encoded_features = pd.DataFrame(encoded_features)
             X_train, X_test, y_train, y_test = prepare_data(df_encoded_features, df_target)
             rf_model = train_or_load_model("models/RandomForestClassifierOptimized.pkl", X_train, y_train)
         else:
-            print("Hi")
             X_train, X_test, y_train, y_test = prepare_data(df_test, df_target)
             rf_model = train_or_load_model("models/RandomForestClassifierUnoptimized.pkl", X_train, y_train)
 
         predictions = rf_model.predict(X_test)
-
+        print(f"Optimized Accuracy: {accuracy_score(y_test, predictions)}")
         # Create confusion matrix
         cm, cmn = analyze_misclassifications(y_test, predictions)
 
