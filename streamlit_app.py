@@ -13,6 +13,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from streamlit_plotly_events import plotly_events
 from sklearn.decomposition import PCA
+from tensorflow.keras.models import load_model
+from tensorflow.keras.losses import mse
 
 # -------------- Constants --------------
 CLASS_MAPPING = {
@@ -31,10 +33,13 @@ def get_label_from_index(index):
 
 # -------------- Data Loading and Preparation --------------
 @st.cache_resource
-def load_and_prepare_data():
+def load_data():
     df_target = pd.read_csv("lucas_organic_carbon_target.csv")
     df_test = pd.read_csv("lucas_organic_carbon_training_and_test_data.csv")
+    return df_target, df_test
 
+
+def prepare_data(df_test, df_target):
     X = df_test  # Features
     y = df_target['x']  # Labels
 
@@ -43,11 +48,10 @@ def load_and_prepare_data():
 
 
 # -------------- Model Training --------------
-@st.cache_resource
-def train_model(X_train, y_train):
+def train_rf_model(X_train, y_train, n_estimators=100, max_depth=None, ):
     rf_model = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=None,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
         random_state=42,
         n_jobs=-1
     )
@@ -210,7 +214,7 @@ def show_pca_for_labels(true_label, pred_label, unique_key):
     }))
 
 
-def train_or_load_model(path, x_train, y_train):
+def train_or_load_model(path, x_train=None, y_train=None):
     """
     Used to either train or load the model. If a valid path is provided, the model will be loaded from that path.
     If there is no model existing at the path, it will be trained.
@@ -219,22 +223,27 @@ def train_or_load_model(path, x_train, y_train):
     :return: Model Instance
     """
     try:
-        with open(path, 'rb') as f:
-            model = pickle.load(f)
+        if path.endswith(".pkl"):
+            with open(path, 'rb') as f:
+                model = pickle.load(f)
+                return model
+        elif path.endswith(".h5"):
+            model = load_model(path, custom_objects={'mse': mse})
             return model
-    except FileNotFoundError:
+    except Exception:
         # Load and prepare data
         # Train model and make predictions
-        model = train_model(x_train, y_train)
-        with open(path, 'wb') as f:
-            pickle.dump(model, f)
-        return model
+        if path.endswith(".pkl"):
+            model = train_rf_model(x_train, y_train)
+            with open(path, 'wb') as f:
+                pickle.dump(model, f)
+            return model
+        return None
 
 
 # -------------- Main Execution --------------
 if __name__ == "__main__":
-
-    X_train, X_test, y_train, y_test = load_and_prepare_data()
+    df_target, df_test = load_data()
 
     # Setup Streamlit interface
     st.sidebar.title("Options")
@@ -250,13 +259,18 @@ if __name__ == "__main__":
     model_1, model_2 = st.columns(2, gap="small")
 
     with model_1:
-        
+
         st.subheader(option_model_selection_1)
 
         if option_model_selection_1 == "Unoptimized Model":
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
+            X_train, X_test, y_train, y_test = prepare_data(df_test, df_target)
+            rf_model = train_or_load_model("models/RandomForestClassifierUnoptimized.pkl", X_train, y_train)
         else:
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
+            encoder = train_or_load_model("models/autoencoder_model_2.h5")
+            encoded_features = encoder.predict(df_test)
+            df_encoded_features = pd.DataFrame(encoded_features)
+            X_train, X_test, y_train, y_test = prepare_data(df_encoded_features, df_target)
+            rf_model = train_or_load_model("models/RandomForestClassifierOptimized.pkl", X_train, y_train)
 
         predictions = rf_model.predict(X_test)
 
@@ -273,10 +287,17 @@ if __name__ == "__main__":
 
         st.subheader(option_model_selection_2)
 
-        if option_model_selection_1 == "Optimized Model":
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
+        if option_model_selection_2 == "Optimized Model":
+            print("Hi right")
+            encoder = train_or_load_model("models/autoencoder_model_2.h5")
+            encoded_features = encoder.predict(df_test)
+            df_encoded_features = pd.DataFrame(encoded_features)
+            X_train, X_test, y_train, y_test = prepare_data(df_encoded_features, df_target)
+            rf_model = train_or_load_model("models/RandomForestClassifierOptimized.pkl", X_train, y_train)
         else:
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
+            print("Hi")
+            X_train, X_test, y_train, y_test = prepare_data(df_test, df_target)
+            rf_model = train_or_load_model("models/RandomForestClassifierUnoptimized.pkl", X_train, y_train)
 
         predictions = rf_model.predict(X_test)
 
