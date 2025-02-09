@@ -31,15 +31,15 @@ def get_label_from_index(index):
 
 # -------------- Data Loading and Preparation --------------
 @st.cache_resource
-def load_and_prepare_data():
-    df_target = pd.read_csv("lucas_organic_carbon_target.csv")
-    df_test = pd.read_csv("lucas_organic_carbon_training_and_test_data.csv")
+def load_and_prepare_data(df_test_path, df_target_path):
+    df_target = pd.read_csv(df_target_path)
+    df_test = pd.read_csv(df_test_path)
 
     X = df_test  # Features
     y = df_target['x']  # Labels
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.21, random_state=42)
-    return X_train, X_test, y_train, y_test
+    return X_train, X_test, y_train, y_test, df_test, df_target
 
 
 # -------------- Model Training --------------
@@ -225,7 +225,7 @@ def train_or_load_model(path, x_train, y_train):
     except FileNotFoundError:
         # Load and prepare data
         # Train model and make predictions
-        model = train_model(x_train, y_train)
+        model  = train_model(x_train, y_train)
         with open(path, 'wb') as f:
             pickle.dump(model, f)
         return model
@@ -234,7 +234,9 @@ def train_or_load_model(path, x_train, y_train):
 # -------------- Main Execution --------------
 if __name__ == "__main__":
 
-    X_train, X_test, y_train, y_test = load_and_prepare_data()
+    df_test_path = "lucas_organic_carbon_training_and_test_data.csv"
+    df_target_path = "lucas_organic_carbon_target.csv"
+    X_train, X_test, y_train, y_test, df_test, df_target = load_and_prepare_data("lucas_organic_carbon_training_and_test_data.csv", "lucas_organic_carbon_target.csv")
 
     # Setup Streamlit interface
     st.sidebar.title("Options")
@@ -243,6 +245,9 @@ if __name__ == "__main__":
     st.sidebar.header("Select Models for Comparison")
     option_model_selection_1 = st.sidebar.selectbox("Select Model 1", ["Unoptimized Model", "Optimized Model"])
     option_model_selection_2 = st.sidebar.selectbox("Select Model 2", ["Optimized Model", "Unoptimized Model"])
+
+    st.sidebar.header("Select number of displayed top features")
+    option_number_top_features = st.sidebar.slider("Top Features to display", min_value=1, max_value=50, value=5)
 
     rf_model_1 = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
     rf_model_2 = train_or_load_model("models/RandomForestClassifier2.pkl", X_train, y_train)
@@ -283,26 +288,29 @@ if __name__ == "__main__":
             confussion_matrix(cm, 2)
 
     st.header("Feature Importances")
-    top_n = 10
+    top_n = option_number_top_features
+    feature_importance_1 = rf_model_1.feature_importances_
+    feature_importance_2 = rf_model_2.feature_importances_
 
     feature_importance_model_1, feature_importance_model_2 = st.columns(2, gap="small")
 
     with feature_importance_model_1:
         st.subheader(option_model_selection_1)
 
-        feature_importance = rf_model_1.feature_importances_
-        sorted_idx = np.argsort(feature_importance)[-top_n:]
+        sorted_idx = np.argsort(feature_importance_1)[::-1][:top_n]  # Korrekte Sortierung
+        sorted_importance = feature_importance_1[sorted_idx]
+        sorted_features = df_test.columns[sorted_idx]
 
         top_features_df = pd.DataFrame({
-            'Feature': X_test.columns[sorted_idx],
-            'Importance': feature_importance[sorted_idx]
+            'Feature': sorted_features,
+            'Importance': sorted_importance
         })
 
         fig = px.bar(
             top_features_df,
-            x='Importance',
-            y='Feature',
-            orientation='h',
+            x='Feature',
+            y='Importance',
+            orientation='v',
             title=f'Top {top_n} Feature Importance',
             labels={'Importance': 'Feature Importance', 'Feature': 'Feature'}
         )
@@ -311,30 +319,40 @@ if __name__ == "__main__":
 
         selected_feature = st.selectbox(
             "Wähle ein Feature aus:",
-            options=top_features_df['Feature']
+            options=top_features_df['Feature'],
+            key="feature_selection_1"
         )
 
         if selected_feature:
-            importance_value = top_features_df[top_features_df['Feature'] == selected_feature]['Importance'].values[0]
-            st.write(f"Du hast das Feature **{selected_feature}** ausgewählt!")
-            st.write(f"Importance-Wert: {importance_value:.4f}")
+            # Anzahl der Intervalle festlegen
+            num_intervals = 10
+            intervals = pd.cut(X_test.iloc[0], bins=num_intervals, labels=['Intervall ' + str(i+1) for i in range(num_intervals)])
 
+            # Intervall für das ausgewählte Feature bestimmen
+            selected_value = X_test[selected_feature].iloc[0]  # Beispiel: Erster Wert im Testdatensatz
+            selected_interval = intervals.iloc[0]  # Intervall für den ausgewählten Wert
+
+            # Ergebnisse anzeigen
+            st.write(f"Du hast das Feature **{selected_feature}** ausgewählt!")
+            st.write(f"Der Wert des Features im Testdatensatz: {selected_value:.8f}")
+            st.write(f"Intervall für das ausgewählte Feature: {selected_interval}")
     with feature_importance_model_2:
         st.subheader(option_model_selection_2)
         
-        feature_importance = rf_model_2.feature_importances_
-        sorted_idx = np.argsort(feature_importance)[-top_n:]
+        sorted_idx = np.argsort(feature_importance_2)[::-1][:top_n]  # Korrekte Sortierung
+        sorted_importance = feature_importance_2[sorted_idx]
+        sorted_features = df_test.columns[sorted_idx]
 
         top_features_df = pd.DataFrame({
-            'Feature': X_test.columns[sorted_idx],
-            'Importance': feature_importance[sorted_idx]
+            'Feature': sorted_features,
+            'Importance': sorted_importance
         })
 
         fig = px.bar(
             top_features_df,
-            x='Importance',
-            y='Feature',
-            orientation='h',
+            x='Feature',
+            y='Importance',
+            orientation='v',
             title=f'Top {top_n} Feature Importance',
             labels={'Importance': 'Feature Importance', 'Feature': 'Feature'}
         )
@@ -343,7 +361,8 @@ if __name__ == "__main__":
 
         selected_feature = st.selectbox(
             "Wähle ein Feature aus:",
-            options=top_features_df['Feature']
+            options=top_features_df['Feature'],
+            key="feature_selection_2"
         )
 
         if selected_feature:
