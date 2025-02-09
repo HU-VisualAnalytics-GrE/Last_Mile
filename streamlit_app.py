@@ -112,7 +112,7 @@ def find_interval(value, interval_info):
 def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, interval_info, rf_classifier):
     """
     Berechnet den Klassifizierungsfehler für ein spezifisches Intervall mit einem vortrainierten Random Forest.
-    Erstellt einen Null-Datensatz mit allen Features und füllt nur das relevante Intervall.
+    Behält die Feature-Namen bei.
     
     Parameters:
     -----------
@@ -140,18 +140,22 @@ def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, i
     # Finde die Grenzen des Intervalls
     boundaries = interval_info['boundaries'][interval_number]
     
-    # Erstelle einen Null-Datensatz mit der vollen Anzahl an Features
-    full_feature_matrix = np.zeros((len(y_true), len(df.columns)))
+    # Erstelle einen Null-DataFrame mit den originalen Feature-Namen
+    full_feature_df = pd.DataFrame(
+        np.zeros((len(y_true), len(df.columns))),
+        columns=df.columns
+    )
     
     # Berechne Start- und End-Indizes für das Intervall
     start_idx = interval_number * interval_info['interval_size']
     end_idx = start_idx + interval_df.shape[1]
     
     # Fülle nur die relevanten Features des Intervalls
-    full_feature_matrix[:, start_idx:end_idx] = interval_df.values
+    feature_names = df.columns[start_idx:end_idx]
+    full_feature_df.loc[:, feature_names] = interval_df.values
     
     # Vorhersagen mit dem vortrainierten Classifier
-    y_pred = rf_classifier.predict(full_feature_matrix)
+    y_pred = rf_classifier.predict(full_feature_df)
     
     # Berechne Metriken
     results = accuracy_score(y_true, y_pred)
@@ -480,8 +484,7 @@ if __name__ == "__main__":
                 rf_model_1
             )
 
-            st.write(f"Accuracy Results: {results:.4f}")
-
+            st.write(f"Accuracy Results before adding points: {results:.4f}")
     with feature_importance_model_2:
         st.subheader(option_model_selection_2)
         
