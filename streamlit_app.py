@@ -28,6 +28,135 @@ CLASS_MAPPING = {
 def get_label_from_index(index):
     return CLASS_MAPPING[index]
 
+def partition_dataframe(df, n_intervals):
+    """
+    Partition a dataframe into n intervals of equal length along its columns.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        Input dataframe to be partitioned
+    n_intervals : int
+        Number of intervals to partition the data into
+    
+    Returns:
+    --------
+    list of pandas.DataFrame:
+        List of dataframes, each containing columns for one interval
+    dict:
+        Information about the partitioning including interval boundaries
+    """
+    # Get total number of columns
+    n_columns = df.shape[1]
+    
+    # Calculate interval size (number of columns per interval)
+    interval_size = n_columns // n_intervals
+    
+    # Create list to store partitioned dataframes
+    partitioned_dfs = []
+    
+    # Store information about intervals
+    interval_info = {
+        'n_intervals': n_intervals,
+        'interval_size': interval_size,
+        'boundaries': []
+    }
+
+    
+    
+    # Partition the dataframe
+    for i in range(n_intervals):
+        start_idx = i * interval_size
+        end_idx = start_idx + interval_size if i < n_intervals - 1 else n_columns
+        
+        # Extract the interval
+        interval_df = df.iloc[:, start_idx:end_idx]
+        partitioned_dfs.append(interval_df)
+        
+        # Store boundary information
+        interval_info['boundaries'].append({
+            'interval': i,
+            'start_col': df.columns[start_idx],
+            'end_col': df.columns[end_idx-1],
+            'n_columns': end_idx - start_idx
+        })
+    
+    return partitioned_dfs, interval_info
+
+def find_interval(value, interval_info):
+    """
+    Find the interval that contains a specific value.
+    
+    Parameters:
+    -----------
+    value : float
+        The value to locate in the intervals
+    interval_info : dict
+        The interval information dictionary returned by partition_dataframe
+    
+    Returns:
+    --------
+    dict
+        Information about the matching interval including interval number and boundaries
+    """
+    for boundary in interval_info['boundaries']:
+        if boundary['start_col'] <= value <= boundary['end_col']:
+            return {
+                'interval_number': boundary['interval'],
+                'start': boundary['start_col'],
+                'end': boundary['end_col'],
+                'n_columns': boundary['n_columns']
+            }
+    return None
+
+def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, interval_info, rf_classifier):
+    """
+    Berechnet den Klassifizierungsfehler für ein spezifisches Intervall mit einem vortrainierten Random Forest.
+    Erstellt einen Null-Datensatz mit allen Features und füllt nur das relevante Intervall.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        Original Dataframe mit allen Daten
+    interval_number : int
+        Nummer des zu analysierenden Intervalls
+    y_true : array-like
+        Wahre Labels der Daten
+    partitioned_data : list
+        Liste der partitionierten DataFrames
+    interval_info : dict
+        Intervallinformationen
+    rf_classifier : RandomForestClassifier
+        Vortrainierter Random Forest Classifier
+    
+    Returns:
+    --------
+    dict
+        Dictionary mit verschiedenen Fehlermetriken
+    """
+    # Extrahiere das gewünschte Intervall
+    interval_df = partitioned_data[interval_number]
+    
+    # Finde die Grenzen des Intervalls
+    boundaries = interval_info['boundaries'][interval_number]
+    
+    # Erstelle einen Null-Datensatz mit der vollen Anzahl an Features
+    full_feature_matrix = np.zeros((len(y_true), len(df.columns)))
+    
+    # Berechne Start- und End-Indizes für das Intervall
+    start_idx = interval_number * interval_info['interval_size']
+    end_idx = start_idx + interval_df.shape[1]
+    
+    # Fülle nur die relevanten Features des Intervalls
+    full_feature_matrix[:, start_idx:end_idx] = interval_df.values
+    
+    # Vorhersagen mit dem vortrainierten Classifier
+    y_pred = rf_classifier.predict(full_feature_matrix)
+    
+    # Berechne Metriken
+    results = accuracy_score(y_true, y_pred)
+    
+    return results
 
 # -------------- Data Loading and Preparation --------------
 @st.cache_resource
@@ -246,8 +375,9 @@ if __name__ == "__main__":
     option_model_selection_1 = st.sidebar.selectbox("Select Model 1", ["Unoptimized Model", "Optimized Model"])
     option_model_selection_2 = st.sidebar.selectbox("Select Model 2", ["Optimized Model", "Unoptimized Model"])
 
-    st.sidebar.header("Select number of displayed top features")
+    st.sidebar.header("Variables for Feature Importance Analysis")
     option_number_top_features = st.sidebar.slider("Top Features to display", min_value=1, max_value=50, value=5)
+    option_number_intervals = st.sidebar.slider("Intervals to display", min_value=1, max_value=50, value=10)
 
     rf_model_1 = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
     rf_model_2 = train_or_load_model("models/RandomForestClassifier2.pkl", X_train, y_train)
@@ -255,9 +385,9 @@ if __name__ == "__main__":
     st.title("Lucas Organic Carbon Dataset")
     st.header("Overview of Misclassifications")
 
-    misclasification_model_1, misclassification_model_2 = st.columns(2, gap="small")
+    misclassification_model_1, misclassification_model_2 = st.columns(2, gap="small")
 
-    with misclasification_model_1:
+    with misclassification_model_1:
         
         st.subheader(option_model_selection_1)
 
@@ -318,24 +448,40 @@ if __name__ == "__main__":
         st.plotly_chart(fig, key="feature_importance_chart_1")
 
         selected_feature = st.selectbox(
-            "Wähle ein Feature aus:",
+            "Select a feature:",
             options=top_features_df['Feature'],
             key="feature_selection_1"
         )
 
         if selected_feature:
-            # Anzahl der Intervalle festlegen
-            num_intervals = 10
-            intervals = pd.cut(X_test.iloc[0], bins=num_intervals, labels=['Intervall ' + str(i+1) for i in range(num_intervals)])
-
-            # Intervall für das ausgewählte Feature bestimmen
-            selected_value = X_test[selected_feature].iloc[0]  # Beispiel: Erster Wert im Testdatensatz
-            selected_interval = intervals.iloc[0]  # Intervall für den ausgewählten Wert
+            num_intervals = option_number_intervals
+            intervals, interval_info = partition_dataframe(X_test, num_intervals)
+            selected_interval = find_interval(selected_feature, interval_info)
 
             # Ergebnisse anzeigen
-            st.write(f"Du hast das Feature **{selected_feature}** ausgewählt!")
-            st.write(f"Der Wert des Features im Testdatensatz: {selected_value:.8f}")
-            st.write(f"Intervall für das ausgewählte Feature: {selected_interval}")
+            st.write(f"Selected interval: **{selected_interval['interval_number']}** (of {num_intervals})")
+            st.write(f"Start value: **{selected_interval['start']}**")
+            st.write(f"End value: **{selected_interval['end']}**")
+            st.write(f"Number of features in interval: **{selected_interval['n_columns']}**")
+
+        selected_interesting_interval = st.selectbox(
+            "Select an interval:",
+            options=[f"{i}" for i in range(1, num_intervals + 1)],
+            key="interval_selection_1"
+        )
+
+        if selected_interesting_interval:
+            results = calculate_interval_error_rf(
+                df_test,
+                int(selected_interesting_interval) - 1,
+                y_test,
+                intervals,
+                interval_info,
+                rf_model_1
+            )
+
+            st.write(f"Accuracy Results: {results:.4f}")
+
     with feature_importance_model_2:
         st.subheader(option_model_selection_2)
         
@@ -366,6 +512,30 @@ if __name__ == "__main__":
         )
 
         if selected_feature:
-            importance_value = top_features_df[top_features_df['Feature'] == selected_feature]['Importance'].values[0]
-            st.write(f"Du hast das Feature **{selected_feature}** ausgewählt!")
-            st.write(f"Importance-Wert: {importance_value:.4f}")
+            num_intervals = option_number_intervals
+            intervals, interval_info = partition_dataframe(X_test, num_intervals)
+            selected_interval = find_interval(selected_feature, interval_info)
+
+            # Ergebnisse anzeigen
+            st.write(f"Selected interval: **{selected_interval['interval_number']}** (of {num_intervals})")
+            st.write(f"Start value: **{selected_interval['start']}**")
+            st.write(f"End value: **{selected_interval['end']}**")
+            st.write(f"Number of features in interval: **{selected_interval['n_columns']}**")
+
+        selected_interesting_interval = st.selectbox(
+            "Select an interval:",
+            options=[f"{i}" for i in range(1, num_intervals + 1)],
+            key="interval_selection_2"
+        )
+
+        if selected_interesting_interval:
+            results = calculate_interval_error_rf(
+                df_test,
+                int(selected_interesting_interval) - 1,
+                y_test,
+                intervals,
+                interval_info,
+                rf_model_2
+            )
+
+            st.write(f"Accuracy Results: {results:.4f}")
