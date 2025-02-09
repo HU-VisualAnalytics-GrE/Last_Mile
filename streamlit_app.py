@@ -238,27 +238,25 @@ if __name__ == "__main__":
 
     # Setup Streamlit interface
     st.sidebar.title("Options")
-    option_cmn = st.sidebar.checkbox("Normalize", value=True)
+    option_cmn = st.sidebar.checkbox("Normalize Confusion Matrix", value=True)
 
     st.sidebar.header("Select Models for Comparison")
     option_model_selection_1 = st.sidebar.selectbox("Select Model 1", ["Unoptimized Model", "Optimized Model"])
     option_model_selection_2 = st.sidebar.selectbox("Select Model 2", ["Optimized Model", "Unoptimized Model"])
 
+    rf_model_1 = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
+    rf_model_2 = train_or_load_model("models/RandomForestClassifier2.pkl", X_train, y_train)
+
     st.title("Lucas Organic Carbon Dataset")
     st.header("Overview of Misclassifications")
 
-    model_1, model_2 = st.columns(2, gap="small")
+    misclasification_model_1, misclassification_model_2 = st.columns(2, gap="small")
 
-    with model_1:
+    with misclasification_model_1:
         
         st.subheader(option_model_selection_1)
 
-        if option_model_selection_1 == "Unoptimized Model":
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
-        else:
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
-
-        predictions = rf_model.predict(X_test)
+        predictions = rf_model_1.predict(X_test)
 
         # Create confusion matrix
         cm, cmn = analyze_misclassifications(y_test, predictions)
@@ -269,16 +267,11 @@ if __name__ == "__main__":
         else:
             confussion_matrix(cm, 1)
 
-    with model_2:
+    with misclassification_model_2:
 
         st.subheader(option_model_selection_2)
 
-        if option_model_selection_1 == "Optimized Model":
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
-        else:
-            rf_model = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
-
-        predictions = rf_model.predict(X_test)
+        predictions = rf_model_2.predict(X_test)
 
         # Create confusion matrix
         cm, cmn = analyze_misclassifications(y_test, predictions)
@@ -288,3 +281,72 @@ if __name__ == "__main__":
             confussion_matrix_normalized(cmn, 2)
         else:
             confussion_matrix(cm, 2)
+
+    st.header("Feature Importances")
+    top_n = 10
+
+    feature_importance_model_1, feature_importance_model_2 = st.columns(2, gap="small")
+
+    with feature_importance_model_1:
+        st.subheader(option_model_selection_1)
+
+        feature_importance = rf_model_1.feature_importances_
+        sorted_idx = np.argsort(feature_importance)[-top_n:]
+
+        top_features_df = pd.DataFrame({
+            'Feature': X_test.columns[sorted_idx],
+            'Importance': feature_importance[sorted_idx]
+        })
+
+        fig = px.bar(
+            top_features_df,
+            x='Importance',
+            y='Feature',
+            orientation='h',
+            title=f'Top {top_n} Feature Importance',
+            labels={'Importance': 'Feature Importance', 'Feature': 'Feature'}
+        )
+
+        st.plotly_chart(fig, key="feature_importance_chart_1")
+
+        selected_feature = st.selectbox(
+            "Wähle ein Feature aus:",
+            options=top_features_df['Feature']
+        )
+
+        if selected_feature:
+            importance_value = top_features_df[top_features_df['Feature'] == selected_feature]['Importance'].values[0]
+            st.write(f"Du hast das Feature **{selected_feature}** ausgewählt!")
+            st.write(f"Importance-Wert: {importance_value:.4f}")
+
+    with feature_importance_model_2:
+        st.subheader(option_model_selection_2)
+        
+        feature_importance = rf_model_2.feature_importances_
+        sorted_idx = np.argsort(feature_importance)[-top_n:]
+
+        top_features_df = pd.DataFrame({
+            'Feature': X_test.columns[sorted_idx],
+            'Importance': feature_importance[sorted_idx]
+        })
+
+        fig = px.bar(
+            top_features_df,
+            x='Importance',
+            y='Feature',
+            orientation='h',
+            title=f'Top {top_n} Feature Importance',
+            labels={'Importance': 'Feature Importance', 'Feature': 'Feature'}
+        )
+
+        st.plotly_chart(fig, key="feature_importance_chart_2")
+
+        selected_feature = st.selectbox(
+            "Wähle ein Feature aus:",
+            options=top_features_df['Feature']
+        )
+
+        if selected_feature:
+            importance_value = top_features_df[top_features_df['Feature'] == selected_feature]['Importance'].values[0]
+            st.write(f"Du hast das Feature **{selected_feature}** ausgewählt!")
+            st.write(f"Importance-Wert: {importance_value:.4f}")
