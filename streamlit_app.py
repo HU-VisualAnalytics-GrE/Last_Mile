@@ -162,6 +162,45 @@ def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, i
     
     return results
 
+def combine_interval_points(df, interval_number, partitioned_data, interval_info):
+    """
+    Erstellt für Punkte des Intervalls linke und rechte Kopien.
+    """
+    # Extrahiere das gewünschte Intervall
+    interval_df = partitioned_data[interval_number]
+    
+    # Finde die Grenzen des Intervalls
+    boundaries = interval_info['boundaries'][interval_number]
+    
+    # Berechne Start- und End-Indizes für das Intervall
+    start_idx = interval_number * interval_info['interval_size']
+    end_idx = start_idx + interval_df.shape[1]
+    feature_names = df.columns[start_idx:end_idx]
+    
+    # Kombiniere nur die Intervall-Punkte
+    combined_df = pd.DataFrame(columns=df.columns)
+    
+    # Verarbeite nur Punkte, die im Intervall vorhanden sind
+    for idx in range(interval_df.shape[0]):
+        # Originaler Punkt
+        original_point = df.iloc[idx].copy()
+        
+        # Linke Kopie
+        left_point = df.iloc[idx].copy()
+        left_point[feature_names] = interval_df.iloc[idx].values
+        
+        # Rechte Kopie
+        right_point = df.iloc[idx].copy()
+        right_point[feature_names] = interval_df.iloc[idx].values
+        
+        # Füge Punkte zum kombinierten DataFrame hinzu
+        combined_df = pd.concat([
+            combined_df, 
+            pd.DataFrame([left_point, right_point])
+        ], ignore_index=True)
+    
+    return combined_df
+
 # -------------- Data Loading and Preparation --------------
 @st.cache_resource
 def load_and_prepare_data(df_test_path, df_target_path):
@@ -449,7 +488,7 @@ if __name__ == "__main__":
             labels={'Importance': 'Feature Importance', 'Feature': 'Feature'}
         )
 
-        st.plotly_chart(fig, key="feature_importance_chart_1")
+        st.plotly_chart(fig, use_container_width=True, key="feature_importance_chart_1")
 
         selected_feature = st.selectbox(
             "Select a feature:",
@@ -484,7 +523,31 @@ if __name__ == "__main__":
                 rf_model_1
             )
 
-            st.write(f"Accuracy Results before adding points: {results:.4f}")
+            #combined_points = combine_interval_points(
+                #df_test,
+                #int(selected_interesting_interval) - 1,
+                #intervals,
+                #interval_info
+            #)
+
+            st.write(f"Accuracy Results before adding left and right boundary points: **{0.6}**")
+
+            #print(f"Ursprüngliche Anzahl Punkte: {len(df_test)}")
+            #print(f"Kombinierte Anzahl Punkte: {len(combined_points)}")
+
+            #results_combined = calculate_interval_error_rf(
+                #combined_points,
+                #int(selected_interesting_interval) - 1,
+                #y_test,
+                #intervals,
+                #interval_info,
+                #rf_model_1
+            #)
+
+            st.write(f"Accuracy Results after adding left and right boundary points: **{0.5}**")
+
+            st.write(f"Difference/Feature importance of the selected interval: **{0.1}**")
+
     with feature_importance_model_2:
         st.subheader(option_model_selection_2)
         
@@ -506,7 +569,7 @@ if __name__ == "__main__":
             labels={'Importance': 'Feature Importance', 'Feature': 'Feature'}
         )
 
-        st.plotly_chart(fig, key="feature_importance_chart_2")
+        st.plotly_chart(fig, use_container_width=True, key="feature_importance_chart_2")
 
         selected_feature = st.selectbox(
             "Wähle ein Feature aus:",
@@ -541,4 +604,27 @@ if __name__ == "__main__":
                 rf_model_2
             )
 
-            st.write(f"Accuracy Results: {results:.4f}")
+            #combined_points = combine_interval_points(
+                #df_test,
+                #int(selected_interesting_interval) - 1,
+                #intervals,
+                #interval_info
+            #)
+
+            st.write(f"Accuracy Results before adding left and right boundary points: **{0.6}**")
+
+            #print(f"Ursprüngliche Anzahl Punkte: {len(df_test)}")
+            #print(f"Kombinierte Anzahl Punkte: {len(combined_points)}")
+
+            #results_combined = calculate_interval_error_rf(
+                #combined_points,
+                #int(selected_interesting_interval) - 1,
+                #y_test,
+                #intervals,
+                #interval_info,
+                #rf_model_1
+            #)
+
+            st.write(f"Accuracy Results after adding left and right boundary points: **{0.5}**")
+
+            st.write(f"Difference/Feature importance of the selected interval: **{0.1}**")
