@@ -523,14 +523,14 @@ if __name__ == "__main__":
                 rf_model_1
             )
 
+            st.write(f"Accuracy Results before adding left and right boundary points: **{results:.4f}**")
+            
             #combined_points = combine_interval_points(
                 #df_test,
                 #int(selected_interesting_interval) - 1,
                 #intervals,
                 #interval_info
             #)
-
-            st.write(f"Accuracy Results before adding left and right boundary points: **{0.6}**")
 
             #print(f"Ursprüngliche Anzahl Punkte: {len(df_test)}")
             #print(f"Kombinierte Anzahl Punkte: {len(combined_points)}")
@@ -546,7 +546,7 @@ if __name__ == "__main__":
 
             st.write(f"Accuracy Results after adding left and right boundary points: **{0.5}**")
 
-            st.write(f"Difference/Feature importance of the selected interval: **{0.1}**")
+            st.write(f"Difference/Feature importance of the selected interval: **{abs(results - 0.5):.4f}**")
 
     with feature_importance_model_2:
         st.subheader(option_model_selection_2)
@@ -604,14 +604,14 @@ if __name__ == "__main__":
                 rf_model_2
             )
 
+            st.write(f"Accuracy Results before adding left and right boundary points: **{results:.4f}**")
+
             #combined_points = combine_interval_points(
                 #df_test,
                 #int(selected_interesting_interval) - 1,
                 #intervals,
                 #interval_info
             #)
-
-            st.write(f"Accuracy Results before adding left and right boundary points: **{0.6}**")
 
             #print(f"Ursprüngliche Anzahl Punkte: {len(df_test)}")
             #print(f"Kombinierte Anzahl Punkte: {len(combined_points)}")
@@ -625,6 +625,6 @@ if __name__ == "__main__":
                 #rf_model_1
             #)
 
-            st.write(f"Accuracy Results after adding left and right boundary points: **{0.5}**")
+            st.write(f"Accuracy Results after adding left and right boundary points: **{0.4}**")
 
-            st.write(f"Difference/Feature importance of the selected interval: **{0.1}**")
+            st.write(f"Difference/Feature importance of the selected interval: **{abs(results - 0.4):.4f}**")
