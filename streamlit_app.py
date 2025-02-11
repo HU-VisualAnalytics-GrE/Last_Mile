@@ -13,6 +13,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from streamlit_plotly_events import plotly_events
 from sklearn.decomposition import PCA
+import tensorflow as tf
+from tensorflow import keras
 
 # -------------- Constants --------------
 CLASS_MAPPING = {
@@ -31,14 +33,14 @@ def get_label_from_index(index):
 def partition_dataframe(df, n_intervals):
     """
     Partition a dataframe into n intervals of equal length along its columns.
-    
+
     Parameters:
     -----------
     df : pandas.DataFrame
         Input dataframe to be partitioned
     n_intervals : int
         Number of intervals to partition the data into
-    
+
     Returns:
     --------
     list of pandas.DataFrame:
@@ -48,13 +50,13 @@ def partition_dataframe(df, n_intervals):
     """
     # Get total number of columns
     n_columns = df.shape[1]
-    
+
     # Calculate interval size (number of columns per interval)
     interval_size = n_columns // n_intervals
-    
+
     # Create list to store partitioned dataframes
     partitioned_dfs = []
-    
+
     # Store information about intervals
     interval_info = {
         'n_intervals': n_intervals,
@@ -62,17 +64,17 @@ def partition_dataframe(df, n_intervals):
         'boundaries': []
     }
 
-    
-    
+
+
     # Partition the dataframe
     for i in range(n_intervals):
         start_idx = i * interval_size
         end_idx = start_idx + interval_size if i < n_intervals - 1 else n_columns
-        
+
         # Extract the interval
         interval_df = df.iloc[:, start_idx:end_idx]
         partitioned_dfs.append(interval_df)
-        
+
         # Store boundary information
         interval_info['boundaries'].append({
             'interval': i,
@@ -80,20 +82,20 @@ def partition_dataframe(df, n_intervals):
             'end_col': df.columns[end_idx-1],
             'n_columns': end_idx - start_idx
         })
-    
+
     return partitioned_dfs, interval_info
 
 def find_interval(value, interval_info):
     """
     Find the interval that contains a specific value.
-    
+
     Parameters:
     -----------
     value : float
         The value to locate in the intervals
     interval_info : dict
         The interval information dictionary returned by partition_dataframe
-    
+
     Returns:
     --------
     dict
@@ -113,7 +115,7 @@ def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, i
     """
     Berechnet den Klassifizierungsfehler für ein spezifisches Intervall mit einem vortrainierten Random Forest.
     Behält die Feature-Namen bei.
-    
+
     Parameters:
     -----------
     df : pandas.DataFrame
@@ -128,7 +130,7 @@ def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, i
         Intervallinformationen
     rf_classifier : RandomForestClassifier
         Vortrainierter Random Forest Classifier
-    
+
     Returns:
     --------
     dict
@@ -136,30 +138,30 @@ def calculate_interval_error_rf(df, interval_number, y_true, partitioned_data, i
     """
     # Extrahiere das gewünschte Intervall
     interval_df = partitioned_data[interval_number]
-    
+
     # Finde die Grenzen des Intervalls
     boundaries = interval_info['boundaries'][interval_number]
-    
+
     # Erstelle einen Null-DataFrame mit den originalen Feature-Namen
     full_feature_df = pd.DataFrame(
         np.zeros((len(y_true), len(df.columns))),
         columns=df.columns
     )
-    
+
     # Berechne Start- und End-Indizes für das Intervall
     start_idx = interval_number * interval_info['interval_size']
     end_idx = start_idx + interval_df.shape[1]
-    
+
     # Fülle nur die relevanten Features des Intervalls
     feature_names = df.columns[start_idx:end_idx]
     full_feature_df.loc[:, feature_names] = interval_df.values
-    
+
     # Vorhersagen mit dem vortrainierten Classifier
     y_pred = rf_classifier.predict(full_feature_df)
-    
+
     # Berechne Metriken
     results = accuracy_score(y_true, y_pred)
-    
+
     return results
 
 def combine_interval_points(df, interval_number, partitioned_data, interval_info):
@@ -168,58 +170,60 @@ def combine_interval_points(df, interval_number, partitioned_data, interval_info
     """
     # Extrahiere das gewünschte Intervall
     interval_df = partitioned_data[interval_number]
-    
+
     # Finde die Grenzen des Intervalls
     boundaries = interval_info['boundaries'][interval_number]
-    
+
     # Berechne Start- und End-Indizes für das Intervall
     start_idx = interval_number * interval_info['interval_size']
     end_idx = start_idx + interval_df.shape[1]
     feature_names = df.columns[start_idx:end_idx]
-    
+
     # Kombiniere nur die Intervall-Punkte
     combined_df = pd.DataFrame(columns=df.columns)
-    
+
     # Verarbeite nur Punkte, die im Intervall vorhanden sind
     for idx in range(interval_df.shape[0]):
         # Originaler Punkt
         original_point = df.iloc[idx].copy()
-        
+
         # Linke Kopie
         left_point = df.iloc[idx].copy()
         left_point[feature_names] = interval_df.iloc[idx].values
-        
+
         # Rechte Kopie
         right_point = df.iloc[idx].copy()
         right_point[feature_names] = interval_df.iloc[idx].values
-        
+
         # Füge Punkte zum kombinierten DataFrame hinzu
         combined_df = pd.concat([
-            combined_df, 
+            combined_df,
             pd.DataFrame([left_point, right_point])
         ], ignore_index=True)
-    
+
     return combined_df
 
 # -------------- Data Loading and Preparation --------------
 @st.cache_resource
-def load_and_prepare_data(df_test_path, df_target_path):
-    df_target = pd.read_csv(df_target_path)
-    df_test = pd.read_csv(df_test_path)
+def load_data():
+    df_target = pd.read_csv("lucas_organic_carbon_target.csv")
+    df_test = pd.read_csv("lucas_organic_carbon_training_and_test_data.csv")
+    return df_target, df_test
 
+
+def prepare_data(df_test, df_target):
     X = df_test  # Features
     y = df_target['x']  # Labels
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.21, random_state=42)
-    return X_train, X_test, y_train, y_test, df_test, df_target
+    return X_train, X_test, y_train, y_test
 
 
 # -------------- Model Training --------------
-@st.cache_resource
-def train_model(X_train, y_train):
+def train_rf_model(X_train, y_train, n_estimators=100, max_depth=None, ):
     rf_model = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=None,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
         random_state=42,
         n_jobs=-1
     )
@@ -382,7 +386,7 @@ def show_pca_for_labels(true_label, pred_label, unique_key):
     }))
 
 
-def train_or_load_model(path, x_train, y_train):
+def train_or_load_model(path, x_train=None, y_train=None):
     """
     Used to either train or load the model. If a valid path is provided, the model will be loaded from that path.
     If there is no model existing at the path, it will be trained.
@@ -391,24 +395,28 @@ def train_or_load_model(path, x_train, y_train):
     :return: Model Instance
     """
     try:
-        with open(path, 'rb') as f:
-            model = pickle.load(f)
+        if path.endswith(".pkl"):
+            with open(path, 'rb') as f:
+                model = pickle.load(f)
+                return model
+        elif path.endswith(".h5"):
+            model = tf.keras.models.load_model(path, custom_objects={'mse': keras.losses.mse})
+            print(model)
             return model
-    except FileNotFoundError:
+    except Exception:
         # Load and prepare data
         # Train model and make predictions
-        model  = train_model(x_train, y_train)
-        with open(path, 'wb') as f:
-            pickle.dump(model, f)
-        return model
+        if path.endswith(".pkl"):
+            model = train_rf_model(x_train, y_train)
+            with open(path, 'wb') as f:
+                pickle.dump(model, f)
+            return model
+        return None
 
 
 # -------------- Main Execution --------------
 if __name__ == "__main__":
-
-    df_test_path = "lucas_organic_carbon_training_and_test_data.csv"
-    df_target_path = "lucas_organic_carbon_target.csv"
-    X_train, X_test, y_train, y_test, df_test, df_target = load_and_prepare_data("lucas_organic_carbon_training_and_test_data.csv", "lucas_organic_carbon_target.csv")
+    df_target, df_test = load_data()
 
     # Setup Streamlit interface
     st.sidebar.title("Options")
@@ -422,9 +430,6 @@ if __name__ == "__main__":
     option_number_top_features = st.sidebar.slider("Top Features to display", min_value=1, max_value=50, value=5)
     option_number_intervals = st.sidebar.slider("Intervals to display", min_value=1, max_value=50, value=10)
 
-    rf_model_1 = train_or_load_model("models/RandomForestClassifier1.pkl", X_train, y_train)
-    rf_model_2 = train_or_load_model("models/RandomForestClassifier2.pkl", X_train, y_train)
-
     st.title("Lucas Organic Carbon Dataset")
     st.header("Overview of Misclassifications")
 
@@ -433,6 +438,15 @@ if __name__ == "__main__":
     with misclassification_model_1:
         
         st.subheader(option_model_selection_1)
+        if option_model_selection_1 == "Unoptimized Model":
+            X_train, X_test, y_train, y_test = prepare_data(df_test, df_target)
+            rf_model_1 = train_or_load_model("models/RandomForestClassifierUnoptimized.pkl", X_train, y_train)
+        else:
+            encoder = train_or_load_model("models/autoencoder_model.h5")
+            encoded_features = encoder.predict(df_test)
+            df_encoded_features = pd.DataFrame(encoded_features)
+            X_train, X_test, y_train, y_test = prepare_data(df_encoded_features, df_target)
+            rf_model_1 = train_or_load_model("models/RandomForestClassifierOptimized.pkl", X_train, y_train)
 
         predictions = rf_model_1.predict(X_test)
 
@@ -448,9 +462,18 @@ if __name__ == "__main__":
     with misclassification_model_2:
 
         st.subheader(option_model_selection_2)
+        if option_model_selection_2 == "Optimized Model":
+            encoder = train_or_load_model("models/autoencoder_model.h5")
+            encoded_features = encoder.predict(df_test)
+            df_encoded_features = pd.DataFrame(encoded_features)
+            X_train, X_test, y_train, y_test = prepare_data(df_encoded_features, df_target)
+            rf_model_2 = train_or_load_model("models/RandomForestClassifierOptimized.pkl", X_train, y_train)
+        else:
+            X_train, X_test, y_train, y_test = prepare_data(df_test, df_target)
+            rf_model_2 = train_or_load_model("models/RandomForestClassifierUnoptimized.pkl", X_train, y_train)
 
         predictions = rf_model_2.predict(X_test)
-
+        print(f"Optimized Accuracy: {accuracy_score(y_test, predictions)}")
         # Create confusion matrix
         cm, cmn = analyze_misclassifications(y_test, predictions)
 
@@ -524,7 +547,7 @@ if __name__ == "__main__":
             )
 
             st.write(f"Accuracy Results before adding left and right boundary points: **{results:.4f}**")
-            
+
             #combined_points = combine_interval_points(
                 #df_test,
                 #int(selected_interesting_interval) - 1,
@@ -550,7 +573,7 @@ if __name__ == "__main__":
 
     with feature_importance_model_2:
         st.subheader(option_model_selection_2)
-        
+
         sorted_idx = np.argsort(feature_importance_2)[::-1][:top_n]  # Korrekte Sortierung
         sorted_importance = feature_importance_2[sorted_idx]
         sorted_features = df_test.columns[sorted_idx]
