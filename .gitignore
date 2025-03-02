@@ -1,2 +1,4 @@
 *.csv
 .vscode
+*.pkl
+*.h5
