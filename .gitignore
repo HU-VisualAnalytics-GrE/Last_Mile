@@ -1,4 +1,3 @@
 *.csv
 .vscode
-*.pkl
-*.h5
+autoencoder_model.h5
