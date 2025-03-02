@@ -1,0 +1,17 @@
+name: semester_project_group_e
+
+channels:
+    - conda-forge
+    - defaults
+
+dependencies:
+    - matplotlib==3.10.1
+    - numpy==2.2.3
+    - pandas==2.2.3
+    - plotly==5.24.1
+    - scikit_learn==1.6.1
+    - seaborn==0.13.2
+    - streamlit==1.40.0
+    - streamlit==1.41.1
+    - streamlit_plotly_events==0.0.6
+    - tensorflow==2.18.0
